@@ -19,6 +19,7 @@ import cron, {
   getTask,
   setLogger,
   setRunCoordinator,
+  shutdown,
 } from 'node-cron';
 ```
 
@@ -51,6 +52,7 @@ type Options = {
   distributed?: boolean;          // run on one instance per fire across a fleet
   runCoordinator?: RunCoordinator;// per-task coordinator (overrides the global one)
   distributedLease?: number;        // lease ms for lease-based coordinators (default 30000)
+  unref?: boolean;                // don't keep the process alive for this task's timer
 };
 ```
 
@@ -143,7 +145,7 @@ type ParsedFields = {
   hour: number[];
   dayOfMonth: (number | string)[];
   month: number[];
-  dayOfWeek: number[];
+  dayOfWeek: (number | string)[];
 };
 ```
 
@@ -236,6 +238,30 @@ interface RunCoordinator {
 ```
 
 Pass `undefined` to clear it. A per-task coordinator can be set via the [`runCoordinator`](/scheduling-options) option. See [Distributed Coordination](/distributed-coordination) for the full guide.
+
+## `shutdown(timeout?)`
+
+Gracefully tears down **every** registered task: stops each one, waits for any in-flight run to settle (up to `timeout`), then destroys them all and clears the registry. Returns a `Promise` that resolves once teardown is complete. Call it from a signal handler so a redeploy or Ctrl-C doesn't cut a running job in half.
+
+| Name      | Type     | Default | Description                                                        |
+| --------- | -------- | ------- | ------------------------------------------------------------------ |
+| `timeout` | `number` | `5000`  | Max time (ms) to wait for busy tasks to finish before destroying them. Tasks that are idle don't wait. |
+
+```js
+import { shutdown } from 'node-cron';
+
+async function stop() {
+  await shutdown(10_000); // give running jobs up to 10s to finish
+  process.exit(0);
+}
+
+process.once('SIGTERM', stop);
+process.once('SIGINT', stop);
+```
+
+- Only tasks that are actually running when `shutdown` is called are awaited; the timeout is a ceiling, not a fixed delay.
+- After it resolves, every task is `destroyed` and [`getTasks()`](#gettasks) is empty. Create new tasks if the process keeps running.
+- Errors thrown while stopping or destroying an individual task are routed to the [logger](/logging), not rethrown, so one bad task can't abort the whole shutdown.
 
 ## Next steps
 

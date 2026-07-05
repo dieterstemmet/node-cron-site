@@ -87,6 +87,9 @@ export interface ScheduledTask {
   getPattern(): string;
   lastRun(): LastRun | null;
 
+  unref(): void;
+  ref(): void;
+
   on(event: TaskEvent, fn: (context: TaskContext) => void | Promise<void>): void;
   off(event: TaskEvent, fn: (context: TaskContext) => void | Promise<void>): void;
   once(event: TaskEvent, fn: (context: TaskContext) => void | Promise<void>): void;
@@ -251,6 +254,23 @@ type LastRun = { date: Date; result?: unknown; error?: Error };
 ```
 
 `LastRun` is exported from the package for TypeScript users.
+
+## Keeping the process alive: `unref()` / `ref()` {#unref-ref}
+
+By default a running task keeps an active timer, which keeps the Node.js process alive. In a long-running server that's what you want. In a short-lived CLI or script, it can stop the process from exiting once the real work is done.
+
+`task.unref()` [unref](https://nodejs.org/api/timers.html#timeoutunref)'s the task's internal timer, so the task keeps firing as long as *something else* keeps the process up, but no longer holds it open on its own. `task.ref()` reverses it.
+
+```js
+import cron from 'node-cron';
+
+const task = cron.schedule('* * * * * *', () => heartbeat());
+task.unref(); // this task alone won't keep the process running
+```
+
+To start a task in the unref'd state without a separate call, pass the [`unref`](/scheduling-options) option to `schedule`/`createTask`.
+
+> Applies to inline tasks. Background tasks run in a forked process and don't hold the parent's event loop open through this timer.
 
 ## Creating a stopped task
 

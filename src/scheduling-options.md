@@ -27,6 +27,7 @@ export type Options = {
   distributed?: boolean;             // run on one instance per fire across a fleet
   runCoordinator?: RunCoordinator;   // per-task coordinator (overrides the global one)
   distributedLease?: number;           // lease ms for lease-based coordinators (default 30000)
+  unref?: boolean;                     // don't keep the process alive for this task's timer
   executeTimeout?: number; // background tasks only
   startTimeout?: number;   // background tasks only
 };
@@ -45,6 +46,7 @@ export type Options = {
 | `distributed`           | `boolean` | `false` | Run this task on a **single instance per fire** across a fleet. Requires a `name`. Uses the `NODE_CRON_RUN` env-var default (one designated runner) unless a coordinator is set. See [Distributed Coordination](/distributed-coordination). |
 | `runCoordinator`        | `RunCoordinator` | global | A per-task [run coordinator](/distributed-coordination#high-availability-a-custom-run-coordinator), overriding the one set with `setRunCoordinator`. Only used when `distributed` is `true`. |
 | `distributedLease`        | `number`  | `30000` | Lease expiry (ms) passed to lease-based coordinators (e.g. a Redis lock) in case the holder crashes mid-run. Must exceed the run time (and, when combined with `maxRandomDelay`, the jitter too, the lease is taken before the jitter). See [Distributed Coordination](/distributed-coordination#distributedlease). Ignored by the env-var default. |
+| `unref`                 | `boolean` | `false` | If `true`, the task's internal timer is [`unref`](https://nodejs.org/api/timers.html#timeoutunref)'d so it won't keep the Node.js process alive on its own. Handy for CLI tools and scripts that should exit once their real work is done. Toggle at runtime with [`task.unref()` / `task.ref()`](/task-lifecycle#unref-ref). |
 
 > 🛈 There is no `scheduled` or `runOnInit` option anymore. Tasks created with `cron.schedule` start immediately; for a task that starts stopped, use [`cron.createTask`](/task-lifecycle#creating-a-stopped-task). To run a task immediately on demand, call [`task.execute()`](/task-lifecycle#execute). See [Migrating from v3](/migrating-from-v3).
 
