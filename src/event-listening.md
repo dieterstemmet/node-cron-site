@@ -35,6 +35,7 @@ task.on('execution:failed', (ctx) => {
 | `task:started`         | `TaskContext` | The task is started via `.start()`.                              |
 | `task:stopped`         | `TaskContext` | The task is stopped via `.stop()`.                               |
 | `task:destroyed`       | `TaskContext` | The task is destroyed via `.destroy()`.                          |
+| `task:failed`          | `TaskContext` | A [background task](/background-tasks)'s daemon exited unexpectedly (crash, OOM-kill). `ctx.error` carries the reason. Inline tasks never emit this. |
 | `execution:started`    | `TaskContext` | Right before the task function runs.                             |
 | `execution:finished`   | `TaskContext` | The task function finishes successfully.                         |
 | `execution:failed`     | `TaskContext` | The task function throws or rejects.                             |
@@ -81,6 +82,7 @@ export type TaskContext = {
   task?: ScheduledTask;
   execution?: Execution;
   reason?: 'not-elected' | 'coordinator-error';
+  error?: Error;
 };
 ```
 
@@ -92,6 +94,7 @@ export type TaskContext = {
 | `task`         | `ScheduledTask?` | The task instance.                                                    |
 | `execution`    | `Execution?`     | Details of the run (present for `execution:*` events).                |
 | `reason`       | `string?`        | Why a run was skipped. Present only on [`execution:skipped`](/distributed-coordination#knowing-when-an-instance-skips): `'not-elected'` or `'coordinator-error'`. |
+| `error`        | `Error?`         | The daemon's exit error. Present only on `task:failed`.               |
 
 ### Execution
 
@@ -120,7 +123,14 @@ export type Execution = {
 ## Notes
 
 - All listeners receive a `TaskContext`, even for non-execution events like `task:stopped` (where `execution` is absent).
-- **Background tasks** emit the same events with the same context, relayed from the worker process.
+- **Background tasks** emit the same events with the same context, relayed from the worker process. They also emit `task:failed` if their daemon dies unexpectedly; node-cron does not auto-restart, so react to it if you want to recover:
+
+  ```js
+  task.on('task:failed', (ctx) => {
+    console.error('daemon died:', ctx.error?.message);
+    task.start(); // restart manually
+  });
+  ```
 - Listening to `execution:missed` also **suppresses** the default missed-execution warning, since node-cron assumes you're handling it. See [Logging](/logging#suppressing-the-missed-execution-warning).
 
 ## Next steps
