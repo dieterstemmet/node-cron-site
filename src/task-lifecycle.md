@@ -18,7 +18,7 @@ Every task is always in exactly one of four states:
 | ------------- | -------------------------------------------------------------- |
 | `stopped`     | Scheduler is not running. The task will not fire.              |
 | `idle`        | Scheduler is running and waiting for the next match.           |
-| `running`     | The task function is currently executing.                      |
+| `running`     | A **scheduled** execution is in progress (not a manual `execute()`). |
 | `destroyed`   | The task is permanently removed and cannot be restarted.       |
 
 They transition like this:
@@ -142,10 +142,11 @@ const result = await task.execute();
 - Useful for testing, debugging, or ad-hoc runs.
 - Resolves with the task's return value, or rejects if it throws.
 - Emits the same lifecycle events as a scheduled run, with `execution.reason === 'invoked'`.
+- **Intentional:** `execute()` forces a run of the attached function. It does **not** go through the scheduler state machine, so it can run even on a `stopped` task, does **not** flip `getStatus()` / `isBusy()`, does **not** participate in [`noOverlap`](/scheduling-options), and does **not** count toward [`maxExecutions`](/scheduling-options). See [node-cron/node-cron#611](https://github.com/node-cron/node-cron/issues/611).
 
 ### `getStatus()`
 
-Returns the current state as a string: `'stopped'`, `'idle'`, `'running'`, or `'destroyed'`. Synchronous for both task types.
+Returns the current **scheduler** state as a string: `'stopped'`, `'idle'`, `'running'`, or `'destroyed'`. Synchronous for both task types. Only **scheduled** fires move the task to `running`; a concurrent `execute()` leaves the status unchanged (typically `idle` or `stopped`).
 
 ```js
 import cron from 'node-cron';
@@ -204,15 +205,17 @@ task.msToNext(); // e.g. 1830000
 
 ### `isBusy()`
 
-`true` while an execution is in progress (the task is in the `running` state), `false` otherwise. Useful before triggering work or shutting down.
+`true` while a **scheduled** execution is in progress (the task is in the `running` state), `false` otherwise. Manual [`execute()`](#execute) runs are invisible to `isBusy()` by design.
 
 ```js
-if (!task.isBusy()) await task.execute();
+if (task.isBusy()) {
+  console.log('a scheduled run is in flight');
+}
 ```
 
 ### `runsLeft()`
 
-When [`maxExecutions`](/scheduling-options) is set, the number of runs remaining before the task destroys itself; otherwise `undefined`.
+When [`maxExecutions`](/scheduling-options) is set, the number of **scheduled** runs remaining before the task destroys itself; otherwise `undefined`. Manual [`execute()`](#execute) calls do not change this count.
 
 ```js
 const task = cron.schedule('* * * * * *', () => {}, { maxExecutions: 3 });
